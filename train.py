@@ -117,7 +117,7 @@ model = combined_model(BindingModel(chem_dim=chem_dim)._generate_model(), efn.Ef
 # Plot model
 # plot_model(model, to_file='graph.png')
 rmsprop = RMSprop(lr=1e-3, clipnorm=1)
-model_checkpoint   = ModelCheckpoint('./model_weights.{epoch:03d}-{val_loss:.4f}.h5',save_best_only=True)
+# model_checkpoint   = ModelCheckpoint('./model_weights.{epoch:03d}-{val_loss:.4f}.h5',save_best_only=True)
 
 reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.8,
                               patience=5, min_lr=1e-8, verbose=1)
@@ -130,7 +130,7 @@ model.fit_generator(generator=training_generator,
                     validation_data=validation_generator,
                     use_multiprocessing=True,
                     workers=6,
-                    epochs=epochs,  callbacks=[reduce_lr, early_stopping, model_checkpoint])
+                    epochs=epochs,  callbacks=[reduce_lr, early_stopping])
 
 # Testing 
 scores = model.evaluate_generator(generator=test_generator)
