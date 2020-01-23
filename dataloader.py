@@ -1,86 +1,94 @@
 from customloader import CustomLoader
 import numpy as np
-import torch
-from torch.utils.data import Dataset, DataLoader
+import math
+# import torch
+# from torch.utils.data import Dataset, DataLoader
 from utils import to_binary, smiles_to_onehot
 import sys
 sys.dont_write_bytecode = True
 np.set_printoptions(threshold=sys.maxsize)
 
-class CDRDataset(Dataset):
+import keras
+
+class CDRDataGenerator(keras.utils.Sequence):
     """Cosmic Cell-line Project Dataset."""
 
-    def __init__(self, data_dir, transform=None, verbose=0, nrows=None):
-        """
-        Args:
-            tsv_file (string): Path to the tsv file
-            data_dir (string): Directory with all the data
-            transform (callable, optional): Optional transform to be applied
-                on a sample.
-        """
-        # import cclp data
-        cclp_dl = CustomLoader(dataset='cclp',path=data_dir, extension='tsv', verbose=verbose, nrows=nrows)
-        cclp_dl.load_data()
-        cclp_df = cclp_dl.data
-        cclp_df = cclp_df[['ID_sample','Mutation Description', 'Mutation CDS']]
-        cclp_df.rename(columns={"ID_sample": "key"}, inplace=True)
-        if verbose:
-            print('CCLP Data trimmed...')
-            print(cclp_df.head)
+    def __init__(self, dataset, data_dir, list_IDs, batch_size=1, dim=(32,32,32), 
+    shuffle=True, transform=None, verbose=0, prows=None):
 
-        # import gdsc data
-        gdsc_dl = CustomLoader(dataset='gdsc',path=data_dir, extension='csv', verbose=verbose, nrows=nrows)
-        gdsc_dl.load_data()
-        gdsc_df = gdsc_dl.data
-        gdsc_df = gdsc_df[['drug_name', 'SMILES.x', 'COSMIC_ID', 'LN_IC50']]
-        gdsc_df.rename(columns={"COSMIC_ID": "key"}, inplace=True)
-        if verbose:
-            print('GDSC Data trimmed...')
-            print(gdsc_df.head)
-    
-        joint = cclp_df.set_index('key').join(gdsc_df.set_index('key'))
-        joint = joint.dropna()
-        indexNames = joint[ joint['Mutation Description'] != ('Substitution - Missense' or 'Substitution - coding silent') ].index
-        joint = joint.drop(indexNames)
-        
-        # transform from natural log scale to mmol
-        joint['LN_IC50'] = joint['LN_IC50'].apply(lambda x: np.exp(x))
-
-        if verbose:
-            print('Combined...')
-            print(joint.head)
-
-        self.data = joint
+        'Initialization'
+        self.dim = dim
+        self.batch_size = batch_size
+        self.list_IDs = list_IDs
+        self.shuffle = shuffle
+        self.on_epoch_end()
+        self.data = dataset
         self.transform = transform
         self.verbose = verbose
+        self.X_gene = to_binary(self.data)
+        self.X_chem = smiles_to_onehot(self.data)
+        self.Y = self.data['LN_IC50'].tolist()
 
     def __len__(self):
-        return len(self.data)
+        return int(np.floor(len(self.list_IDs) / self.batch_size))
 
-    def __getitem__(self, idx):
-        if torch.is_tensor(idx):
-            idx = idx.tolist()
+    def __data_generation(self, list_IDs_temp):
+        'Generates data containing batch_size samples' # X : (n_samples, *dim, n_channels)
+        # Initialization
+        X = np.empty((self.batch_size, self.dim, 1))
+        y = np.empty((self.batch_size), dtype=float)
 
-        self.data.reset_index(inplace=True) 
-        print(self.data.head)
-
-        X_gene = to_binary(self.data)
-        X_chem = smiles_to_onehot(self.data)
-        Y = self.data.ix[:,5]
-        print(Y)
 
         if self.verbose:
-            print('Loaded 1D genomic data with shape... ' + str(X_gene.shape))
-            print('Loaded 1D chemical data with shape... ' + str(X_chem.shape))
-            print('Loaded IC50 data with shape... ' + str(Y.shape))
+            print('Loaded 1D genomic data with shape... ' + str(self.X_gene.shape))
+            print('Loaded 1D chemical data with shape... ' + str(self.X_chem.shape))
+            print('Loaded IC50 data with shape... ' + str(len(self.Y)))
 
-        X_gene_sample = X_gene[idx]
-        X_chem_sample = X_chem[idx]
-        Y_sample = Y[idx]
+        # Generate data 
+        # mu, sigma = 0, 1
+        # noise = np.random.normal(mu, sigma, size=(self.dim, 1))
+        for i, ID in enumerate(list_IDs_temp):
+            # Store sample
+            # zeros_gene = np.ones(shape=(28087-X_gene[ID].shape[0]*math.floor(28087/X_gene[ID].shape[0]))).astype(int)
+            # zeros_chem = np.ones(shape=(3072-X_chem[ID].shape[0]*math.floor(3072/X_chem[ID].shape[0])),dtype=int)
 
-        # if self.transform:
-        #     sample = self.transform(sample)
+            padded_gene = np.tile(self.X_gene[ID], math.floor(28087/self.X_gene[ID].shape[0]))
+            # padded_chem = np.tile(self.X_chem[ID], math.floor(3072/self.X_chem[ID].shape[0]))
+            X[i,] = np.expand_dims(np.append(padded_gene, self.X_chem[ID]), axis=1)
+            # Store class
+            # print(y[i])
+            y[i] = self.Y[ID]
 
-        return {'genes':X_gene_sample, 'chem':X_chem_sample, 'y':Y_sample}
+        return X, y
 
-dat = CDRDataset(data_dir='./data', verbose=1)
+    def on_epoch_end(self):
+        'Updates indexes after each epoch'
+        self.indexes = np.arange(len(self.list_IDs))
+        # print(self.indexes)
+        if self.shuffle == True:
+            np.random.shuffle(self.indexes)
+
+    def __getitem__(self, index):
+        'Generate one batch of data'
+        # Generate indexes of the batch
+        indexes = self.indexes[index*self.batch_size:(index+1)*self.batch_size]
+        
+        # Find list of IDs
+        list_IDs_temp = [self.list_IDs[k] for k in indexes]
+
+        # Generate data
+        X, y = self.__data_generation(list_IDs_temp)
+
+        return X, y
+
+# train_params = {'dim': 30286,
+#           'batch_size': 8,
+#           'shuffle': True,
+#           'prows':900,
+#           'verbose':False,
+#           'data_dir':'./data/',
+#           'list_IDs':range(16)}
+
+# # Testing Generators
+# training_generator = CDRDataGenerator(**train_params)[0]
+# print(training_generator)

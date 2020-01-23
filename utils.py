@@ -20,10 +20,10 @@ def to_onehot(case):
         return '0001'
 
 def to_binary(df):
-    bin_strings = ['{0:017b}'.format(int(s[2:-3]))+to_onehot(s[-3])+to_onehot(s[-1]) for s in df.ix[:,2]]
+    bin_strings = ['{0:017b}'.format(int(s[2:-3]))+to_onehot(s[-3])+to_onehot(s[-1]) for s in df['Mutation CDS'].tolist()]
     total = []
-    print('Preprocessing CCLP data... ')
-    for string in tqdm(bin_strings):
+    # print('Preprocessing CCLP data... ')
+    for string in bin_strings:
         total.append([int(char) for char in string])
     return np.array(total)
 
@@ -42,16 +42,16 @@ def iter_encoder(string, maxlen):
 def smiles_to_onehot(df, verbose=0):
     total = []
     # get maximum length
-    maxl = len(max(df.ix[:,4], key=len))
+    maxl = len(max(df['SMILES.x'].tolist(), key=len))
     if verbose:
         # get unique set of smiles characters
-        smiles_set = list({l for word in df.ix[:,4] for l in word})
+        smiles_set = list({l for word in df['SMILES.x'].tolist() for l in word})
         print('Unique SMILES characters used for onehot encoding: ')
         print(smiles_set)
         print(maxl)
-    bin_strings = [iter_encoder(s, maxl) for s in df.ix[:,4]]
-    print('Prepocessing SMILES... ')
-    for string in tqdm(bin_strings):
+    bin_strings = [iter_encoder(s, maxl) for s in df['SMILES.x'].tolist()]
+    # print('Prepocessing SMILES... ')
+    for string in bin_strings:
         total.append([int(char) for char in string])
     return np.array(total)
     
