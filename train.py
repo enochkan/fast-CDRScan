@@ -72,7 +72,7 @@ valid_IDs = valid.index.values.tolist()
 test_IDs = test.index.values.tolist()
 
 # Parameters
-train_params = {'dim': 28075+chem_dim,
+train_params = {'dim': 25+chem_dim,
           'batch_size': bs,
           'shuffle': shuffle,
           'prows':prows,
@@ -80,7 +80,7 @@ train_params = {'dim': 28075+chem_dim,
           'data_dir':data_dir,
           'list_IDs':train_IDs}
 
-valid_params = {'dim': 28075+chem_dim,
+valid_params = {'dim': 25+chem_dim,
           'batch_size': bs,
           'shuffle': shuffle,
           'prows':prows,
@@ -88,7 +88,7 @@ valid_params = {'dim': 28075+chem_dim,
           'data_dir':data_dir,
           'list_IDs':valid_IDs}
 
-test_params = {'dim': 28075+chem_dim,
+test_params = {'dim': 25+chem_dim,
           'batch_size': 52,
           'shuffle': False,
           'prows':prows,
@@ -102,35 +102,37 @@ validation_generator = CDRDataGenerator(dataset=joint, **valid_params)
 test_generator = CDRDataGenerator(dataset=joint, **test_params)
 
 # Design model
-def combined_model(concat, effnet):
-    model = Sequential()
-    model.add(concat)
-    model.add(effnet)
-    model.add(Dropout(0.5))
-    model.add(Dense(1, activation='linear'))
-    # model.summary()
-    return model
+# def combined_model(concat, effnet):
+#     model = Sequential()
+#     model.add(concat)
+#     model.add(effnet)
+#     model.add(Dropout(0.5))
+#     model.add(Dense(1, activation='linear'))
+#     model.summary()
+#     return model
     
 
-model = combined_model(BindingModel(chem_dim=chem_dim)._generate_model(), efn.EfficientNetB1(weights=None, pooling='avg', include_top=False))
+# model = combined_model(BindingModel(chem_dim=chem_dim)._generate_model(), efn.EfficientNetB1(weights=None, pooling='avg', include_top=False))
+model = BindingModel(chemdim=chem_dim)()
+
 
 # Plot model
-# plot_model(model, to_file='graph.png')
+plot_model(model, to_file='graph.png')
 rmsprop = RMSprop(lr=1e-3, clipnorm=1)
-# model_checkpoint   = ModelCheckpoint('./model_weights.{epoch:03d}-{val_loss:.4f}.h5',save_best_only=True)
+model_checkpoint   = ModelCheckpoint('./model_weights.{epoch:03d}-{val_loss:.4f}-{val_r_square:.4f}.h5',save_best_only=True, monitor='val_loss')
 
 reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.8,
                               patience=5, min_lr=1e-8, verbose=1)
 early_stopping = EarlyStopping(monitor='val_loss', patience=10, verbose=0, mode='min')
 # mcp_save = ModelCheckpoint('best_mdl_wts.hdf5', save_best_only=True, monitor='val_loss', mode='min')
 
-model.compile(optimizer=rmsprop, loss=root_mean_squared_error, metrics=[r_square,])
+model.compile(optimizer=rmsprop, loss=root_mean_squared_error, metrics=[r_square])
 # Train model on dataset
 model.fit_generator(generator=training_generator,
                     validation_data=validation_generator,
                     use_multiprocessing=True,
                     workers=6,
-                    epochs=epochs,  callbacks=[reduce_lr, early_stopping])
+                    epochs=epochs,  callbacks=[reduce_lr, early_stopping, model_checkpoint])
 
 # Testing 
 scores = model.evaluate_generator(generator=test_generator)

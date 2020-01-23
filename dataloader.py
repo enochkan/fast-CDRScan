@@ -52,9 +52,9 @@ class CDRDataGenerator(keras.utils.Sequence):
             # zeros_gene = np.ones(shape=(28087-X_gene[ID].shape[0]*math.floor(28087/X_gene[ID].shape[0]))).astype(int)
             # zeros_chem = np.ones(shape=(3072-X_chem[ID].shape[0]*math.floor(3072/X_chem[ID].shape[0])),dtype=int)
 
-            padded_gene = np.tile(self.X_gene[ID], math.floor(28087/self.X_gene[ID].shape[0]))
+            # padded_gene = np.tile(self.X_gene[ID], math.floor(28087/self.X_gene[ID].shape[0]))
             # padded_chem = np.tile(self.X_chem[ID], math.floor(3072/self.X_chem[ID].shape[0]))
-            X[i,] = np.expand_dims(np.append(padded_gene, self.X_chem[ID]), axis=1)
+            X[i,] = np.expand_dims(np.append(self.X_gene[ID], self.X_chem[ID]), axis=1)
             # Store class
             # print(y[i])
             y[i] = self.Y[ID]
